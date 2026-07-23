@@ -9,26 +9,49 @@
 
 `plugins/course-detail-image-generator/skills/` 下的技能文件来自本机已验证版本，封装时未修改任何技能内容。`SKILL-CHECKSUMS.sha256` 记录插件内全部技能文件的 SHA-256，可用于发布前后核验。
 
-## 团队安装
+## 安装
 
-1. 将本仓库提交到团队 Git 仓库并克隆到本地。
-2. 添加此仓库为本地 marketplace：
+### 交给 Codex Agent 安装（推荐）
 
-   ```bash
-   codex plugin marketplace add /absolute/path/to/course-detail-image-plugin-repo
-   ```
+把下面这句话直接发送给 Codex Agent：
 
-3. 安装插件：
+```text
+请使用当前环境已有的 GitHub/SSH 凭据，安装这个 GitHub 仓库里的 Codex 插件，
+并在安装完成后告诉我如何开始使用：
+https://github.com/BenkyoEveryday/course-detail-image-skills
+```
 
-   ```bash
-   codex plugin add course-detail-image-generator@course-detail-team
-   ```
+Agent 应依次将该 GitHub 仓库添加为 marketplace，并安装其中的
+`course-detail-image-generator` 插件。仓库根目录已经包含 Codex 可识别的
+`.agents/plugins/marketplace.json`，不需要用户先克隆仓库或查找本地路径。
 
-4. 新建 Codex 任务，并使用以下表达触发：
+安装完成后，请新建一个 Codex 任务，让新任务加载刚安装的 skills。可以用下面的提示词开始：
 
-   ```text
-   使用详情图生成技能，根据这份 Word 需求文档生成课程详情图。
-   ```
+```text
+使用详情图生成技能，根据这份 Word 需求文档生成课程详情图。
+```
+
+### 手动安装
+
+在终端执行：
+
+```bash
+codex plugin marketplace add git@github.com:BenkyoEveryday/course-detail-image-skills.git --ref main
+codex plugin add course-detail-image-generator@course-detail-team
+```
+
+第一条命令通过 SSH 直接读取 GitHub 仓库，无需提前执行 `git clone`；执行者需要拥有该仓库的访问权限，并已配置 GitHub SSH 密钥。第二条命令会安装插件及其包含的两个 skills。
+
+## 更新已安装的插件
+
+仓库发布新版本后，在终端执行：
+
+```bash
+codex plugin marketplace upgrade course-detail-team
+codex plugin add course-detail-image-generator@course-detail-team
+```
+
+更新完成后新建 Codex 任务，以确保任务使用最新版本。
 
 ## 发布与更新
 
@@ -40,9 +63,8 @@
 
 ## 验证
 
-在仓库根目录运行：
+维护者克隆仓库后，可在仓库根目录核验技能文件是否与发布版本一致：
 
 ```bash
-python3 /path/to/plugin-creator/scripts/validate_plugin.py plugins/course-detail-image-generator
 shasum -a 256 -c SKILL-CHECKSUMS.sha256
 ```
