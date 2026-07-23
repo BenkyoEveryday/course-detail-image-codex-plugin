@@ -17,7 +17,7 @@
 
 ```text
 请安装这个公开 GitHub 仓库里的 Codex 插件，并在安装完成后告诉我如何开始使用：
-https://github.com/BenkyoEveryday/course-detail-image-skills
+https://github.com/BenkyoEveryday/course-detail-image-codex-plugin
 ```
 
 Agent 应依次将该 GitHub 仓库添加为 marketplace，并安装其中的
@@ -35,7 +35,7 @@ Agent 应依次将该 GitHub 仓库添加为 marketplace，并安装其中的
 在终端执行：
 
 ```bash
-codex plugin marketplace add https://github.com/BenkyoEveryday/course-detail-image-skills --ref main
+codex plugin marketplace add https://github.com/BenkyoEveryday/course-detail-image-codex-plugin --ref main
 codex plugin add course-detail-image-generator@course-detail-team
 ```
 
