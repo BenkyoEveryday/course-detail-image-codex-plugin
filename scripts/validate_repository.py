@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Validate marketplace, plugin, skills, scripts, and integrity metadata."""
+"""Validate standalone skills, scripts, and integrity metadata."""
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import subprocess
@@ -12,10 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MARKETPLACE = ROOT / ".agents" / "plugins" / "marketplace.json"
-PLUGIN_ROOT = ROOT / "plugins" / "course-detail-image-generator"
-PLUGIN_MANIFEST = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
-SKILLS_ROOT = PLUGIN_ROOT / "skills"
+SKILLS_ROOT = ROOT / "skills"
 REQUIRED_ROOT_FILES = (
     "README.md",
     "CHANGELOG.md",
@@ -25,7 +21,6 @@ REQUIRED_ROOT_FILES = (
     "SKILL-CHECKSUMS.sha256",
 )
 SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 FORBIDDEN_SKILL_DOCS = {
     "README.md",
     "CHANGELOG.md",
@@ -46,14 +41,6 @@ class Validation:
 
     def note(self, message: str) -> None:
         self.notes.append(message)
-
-
-def load_json(path: Path, validation: Validation) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        validation.errors.append(f"{path.relative_to(ROOT)}: invalid JSON: {exc}")
-        return {}
 
 
 def parse_frontmatter(path: Path, validation: Validation) -> tuple[dict[str, str], str]:
@@ -95,26 +82,6 @@ def parse_frontmatter(path: Path, validation: Validation) -> tuple[dict[str, str
 def quoted_yaml_value(text: str, key: str) -> str | None:
     match = re.search(rf"^\s+{re.escape(key)}:\s+([\"'])(.*?)\1\s*$", text, re.MULTILINE)
     return match.group(2) if match else None
-
-
-def validate_marketplace(validation: Validation) -> None:
-    data = load_json(MARKETPLACE, validation)
-    validation.require(data.get("name") == "course-detail-team", "marketplace name must be course-detail-team")
-    plugins = data.get("plugins", [])
-    validation.require(isinstance(plugins, list) and len(plugins) > 0, "marketplace must list at least one plugin")
-    for plugin in plugins if isinstance(plugins, list) else []:
-        source = plugin.get("source", {})
-        path = source.get("path")
-        validation.require(source.get("source") == "local", "marketplace plugin source must be local")
-        validation.require(isinstance(path, str) and (ROOT / path).is_dir(), f"marketplace source path does not exist: {path}")
-
-
-def validate_plugin(validation: Validation) -> None:
-    data = load_json(PLUGIN_MANIFEST, validation)
-    validation.require(data.get("name") == PLUGIN_ROOT.name, "plugin manifest name must match its directory")
-    validation.require(bool(SEMVER.fullmatch(str(data.get("version", "")))), "plugin version must be semantic versioning")
-    validation.require(data.get("skills") == "./skills/", "plugin skills path must be ./skills/")
-    validation.require(isinstance(data.get("description"), str) and bool(data.get("description", "").strip()), "plugin description is required")
 
 
 def validate_skill(skill_dir: Path, validation: Validation) -> None:
@@ -180,15 +147,8 @@ def main() -> int:
     for filename in REQUIRED_ROOT_FILES:
         validation.require((ROOT / filename).is_file(), f"missing repository file: {filename}")
 
-    validation.require(MARKETPLACE.is_file(), "missing .agents/plugins/marketplace.json")
-    validation.require(PLUGIN_MANIFEST.is_file(), "missing plugin.json")
-    if MARKETPLACE.is_file():
-        validate_marketplace(validation)
-    if PLUGIN_MANIFEST.is_file():
-        validate_plugin(validation)
-
     skill_dirs = sorted(path for path in SKILLS_ROOT.iterdir() if path.is_dir()) if SKILLS_ROOT.is_dir() else []
-    validation.require(bool(skill_dirs), "plugin must contain at least one skill")
+    validation.require(bool(skill_dirs), "repository must contain at least one skill")
     for skill_dir in skill_dirs:
         validate_skill(skill_dir, validation)
 

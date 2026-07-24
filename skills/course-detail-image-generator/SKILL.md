@@ -1,6 +1,6 @@
 ---
-name: generate-course-detail-images
-description: "Generate course product cover/detail-page images from either a Word requirements document or a ZIP archive containing one Markdown requirements file plus an image folder. First create high-design gpt-image2/image2 visual drafts that obey source-specified image usage and exact placeholder ratios, then use the embed-real-images-no-ps skill to deterministically place extracted real screenshots/photos into placeholders marked 真实占位图 without Photoshop or AI redrawing. Use for strict supplied copy, fixed 16:9/3:4 outputs, staged page mapping, ratio-locked placeholder drafts, and final real-material embedding. Also trigger when the user says 详情图生成."
+name: course-detail-image-generator
+description: "Generate course product cover and detail-page images from a Word requirements document or a ZIP containing one Markdown requirements file plus images. Create high-design image-generation drafts with strict supplied copy, fixed 16:9 or 3:4 outputs, staged page mapping, and exact placeholder ratios, then deterministically embed real screenshots or photos without Photoshop or AI redrawing. Use when the user asks for 详情图生成、课程封面图、商品详情页、真实课件截图嵌入，或无 PS 详情图制作。"
 ---
 
 # 课程详情图生成完整流程
@@ -9,7 +9,7 @@ description: "Generate course product cover/detail-page images from either a Wor
 
 1. 先解析 Word 或压缩包，输出页面映射表和风格方向，等待用户确认。
 2. 用户确认后，用 `gpt-image2 / image2` 生成有设计感、带准确图片占位的视觉稿。
-3. 再调用 `$embed-real-images-no-ps`，把 Word 中提取的真实图片嵌入占位区域，保持截图文字和细节清晰。
+3. 再执行本技能的[无 PS 真实素材嵌入规范](references/real-image-embedding.md)，把 Word 中提取的真实图片嵌入占位区域，保持截图文字和细节清晰。
 
 不要用 Photoshop。不要用图像生成模型融合真实截图，因为它会改字、糊字或重画截图内容。
 
@@ -79,8 +79,9 @@ description: "Generate course product cover/detail-page images from either a Wor
 - 生成视觉稿前仍须测量每张 Word 素材的像素宽高，用于验证 Word 指定比例是否与素材相容，但实测比例不得静默覆盖 Word 指定比例。若二者相对偏差超过 `3%`，在页面映射表中标注冲突并等待用户确认；确认后仍按用户最终指定比例执行。
 - `16:9` 素材必须得到横向 `16:9` 可嵌入内框；A4 素材必须得到竖向 `210:297` 可嵌入内框；手机与 Logo 必须得到各自原始比例内框。禁止将不同类别套进统一尺寸的横条、方卡或“看起来差不多”的卡片中。
 - 含文字、表格、课件页、文件列表、教案和脚本的真实素材默认完整展示：占位内框必须符合已确认的最终锁定比例（标准课件归一为 16:9、标准文档归一为 A4、特殊素材保留原始比例），后续默认使用 `contain`，不得为了填满卡片而 `cover` 裁切。只有 Word 或用户明确允许裁切时才可使用 `cover`。
-- 真实截图、课件页、文件页、表格页、逐字稿页必须通过 `$embed-real-images-no-ps` 确定性嵌入，不让 image2 重画。
-- 最终嵌图阶段不得在本技能内自行写或改用其他合成逻辑；必须完整执行 `$embed-real-images-no-ps` 的图层模型、脚本、遮罩预览与验收流程。
+- “完整展示”不等于把较小的素材比例矩形居中放进更大的卡片。槽位 `opening` 必须量到卡片四条真实内边界；若文字敏感素材与完整开口比例偏差超过 `3%`，必须停止嵌图并修正槽位或重生成占位稿，禁止用白边、占位底色、拉伸或裁掉文字来掩盖。
+- 真实截图、课件页、文件页、表格页、逐字稿页必须通过本技能的确定性嵌图流程处理，不让 image2 重画。
+- 最终嵌图阶段不得自行改用其他合成逻辑；必须完整执行 `references/real-image-embedding.md` 的图层模型、脚本、遮罩预览与验收流程。
 
 ## 标准流程
 
@@ -236,7 +237,7 @@ assets/
 - 整理页面映射表。
 - 保存生图提示词和文件清单。
 - 后续测量 slot 坐标。
-- 第二阶段运行 `$embed-real-images-no-ps` 的确定性嵌入脚本。
+- 第二阶段运行本技能的确定性嵌入脚本。
 
 如果当前环境没有可用生图工具，必须停在“页面映射表 + image2 生成提示词”阶段，并明确说明无法生成视觉稿；不要改用代码排版替代。
 
@@ -317,23 +318,24 @@ assets/
 请确认占位视觉稿。确认后我再用无 PS 真实素材嵌入流程，把 Word 图片放入对应占位。
 ```
 
-### 5. 调用无 PS 真实素材嵌入
+### 5. 执行无 PS 真实素材嵌入
 
-用户确认视觉稿后，详情图生成的职责到此切换：后续真实素材嵌入**完全使用**本机 `$embed-real-images-no-ps` 技能，本技能不再定义、摘要、实现或修改任何嵌图步骤。
+用户确认视觉稿后，先完整读取 [无 PS 真实素材嵌入规范](references/real-image-embedding.md)，再处理真实素材。该规范是本技能嵌图阶段的唯一执行标准。
 
 执行方式：
 
-1. 先完整读取 `$embed-real-images-no-ps` 的本机 `SKILL.md`。
-2. 将以下输入交给该技能：image2 占位视觉稿、**仅“图片用途 = 真实占位图”的** Word 真实素材、已确认的页面映射表，以及每张素材的 Word 指定占位比例、顺序和裁切许可。
-3. 完整执行该技能自己的图层模型、矩形或四点透视槽位选择、`slots.json`、保护层、脚本、`mask-preview`、`qa-dir` 和验收流程。
-4. 严格遵守该技能的最终产物与验收结论；不得在此处改用任何自行实现的贴图、遮罩、重采样或合成逻辑。
+1. 准备 image2 占位视觉稿、**仅“图片用途 = 真实占位图”的** Word 真实素材、已确认的页面映射表，以及每张素材的 Word 指定占位比例、顺序和裁切许可。
+2. 完整执行嵌图规范中的图层模型、矩形或四点透视槽位选择、`slots.json`、保护层、脚本、`mask-preview`、`qa-dir` 和验收流程。
+3. 严格遵守嵌图规范的最终产物与验收结论；不得改用其他贴图、遮罩、重采样或合成逻辑。
+
+所有新建 `slots.json` 必须启用 `"strictGeometry": true`，矩形槽位必须使用 `opening` 对象，并为每个槽位显式填写 `cropAllowed`。严格模式下必须同时输出 mask preview 和逐槽 QA crop；任一素材没有触达完整内开口四边，禁止交付。
 
 本技能仅保留两项上游约束，并把它们作为输入传给无 PS 技能：
 
 - Word 未明确允许裁切的素材必须完整展示。
 - 文字、表格、课件和文件截图不得被生图模型重画或改写。
 
-因此，最终的嵌图效果、透视处理、清晰度处理、保护层和验收标准，以 `$embed-real-images-no-ps` 当前版本为唯一标准。
+因此，最终的嵌图效果、透视处理、清晰度处理、保护层和验收标准，以 `references/real-image-embedding.md` 为唯一标准。
 
 ### 6. 验收
 

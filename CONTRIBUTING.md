@@ -46,7 +46,7 @@ python3 scripts/validate_repository.py
 ```text
 feat: 增加多槽位比例验收
 fix: 修复透视嵌图边缘露底
-docs: 完善插件安装说明
+docs: 完善技能安装说明
 ```
 
 破坏兼容性的 Skill 重命名或工作流变化需要提升主版本；新增向后兼容能力提升次版本；修复提升修订版本。

@@ -82,9 +82,18 @@ function validateConfig(config, baseWidth, baseHeight) {
   if (!config || !Array.isArray(config.slots) || config.slots.length === 0) {
     throw new Error("Config must contain a non-empty slots array.");
   }
+  if (config.strictGeometry !== undefined && typeof config.strictGeometry !== "boolean") {
+    throw new Error("strictGeometry must be true or false.");
+  }
   config.slots.forEach((slot, index) => {
     const label = `slots[${index}]`;
     if (!slot.source || !fs.existsSync(slot.source)) throw new Error(`${label}.source does not exist: ${slot.source}`);
+    if (config.strictGeometry && typeof slot.cropAllowed !== "boolean") {
+      throw new Error(`${label}.cropAllowed must be explicitly true or false in strictGeometry mode.`);
+    }
+    if (slot.cropAllowed !== undefined && typeof slot.cropAllowed !== "boolean") {
+      throw new Error(`${label}.cropAllowed must be true or false.`);
+    }
     if (slot.quad) {
       if (!Array.isArray(slot.quad) || slot.quad.length !== 4) {
         throw new Error(`${label}.quad must contain four points in TL, TR, BR, BL order.`);
@@ -125,6 +134,9 @@ function validateConfig(config, baseWidth, baseHeight) {
         throw new Error(`${label}.textSensitive must be true or false.`);
       }
     } else {
+      if (config.strictGeometry && !slot.opening) {
+        throw new Error(`${label}.opening is required in strictGeometry mode; legacy top-level geometry can hide an undersized opening.`);
+      }
       if (slot.opening && (typeof slot.opening !== "object" || Array.isArray(slot.opening))) {
         throw new Error(`${label}.opening must be a rectangle object.`);
       }
@@ -306,6 +318,19 @@ function resolveFillPolicy(slot, sourceWidth, sourceHeight, targetWidth, targetH
   const mismatch = 1 - fitFraction;
   const requestedFit = slot.fit || "cover";
   const label = `slots[${index}] ${path.basename(slot.source)}`;
+  if (slot.strictGeometry && slot.cropAllowed === false && mismatch > 0.03) {
+    throw new Error(
+      `${label} cannot fill its opening without cropping: source ratio ${sourceRatio.toFixed(4)}, ` +
+      `opening ratio ${openingRatio.toFixed(4)}, relative mismatch ${(mismatch * 100).toFixed(2)}%. ` +
+      `The limit for non-croppable content is 3%. Remeasure the complete opening or regenerate the placeholder at the source ratio.`
+    );
+  }
+  if (slot.strictGeometry && mismatch > 0.002) {
+    const croppedAxis = sourceRatio > openingRatio ? "left/right" : "top/bottom";
+    console.warn(
+      `Fill report: ${label} will use centred cover and crop approximately ${(mismatch * 100).toFixed(1)}% on the ${croppedAxis} axis.`
+    );
+  }
   if (mismatch > 0.002 && (requestedFit === "contain" || requestedFit === "inside")) {
     console.warn(
       `Warning: ${label} requested ${requestedFit}, but source ratio ${sourceRatio.toFixed(3)} differs from opening ${openingRatio.toFixed(3)}. ` +
@@ -318,7 +343,7 @@ function resolveFillPolicy(slot, sourceWidth, sourceHeight, targetWidth, targetH
     );
   }
   return {
-    fit: mismatch > 0.002 ? "cover" : (["inside"].includes(requestedFit) ? "contain" : ["outside"].includes(requestedFit) ? "cover" : requestedFit),
+    fit: slot.strictGeometry || mismatch > 0.002 ? "cover" : (["inside"].includes(requestedFit) ? "contain" : ["outside"].includes(requestedFit) ? "cover" : requestedFit),
     position: "centre",
     mismatch,
   };
@@ -439,12 +464,16 @@ async function main() {
   const metadata = await sharp(args.base).metadata();
   if (!metadata.width || !metadata.height) throw new Error("Unable to read base image dimensions.");
   validateConfig(config, metadata.width, metadata.height);
+  if (config.strictGeometry && (!args["mask-preview"] || !args["qa-dir"])) {
+    throw new Error("strictGeometry mode requires both --mask-preview and --qa-dir so the complete opening can be verified.");
+  }
 
   const assetLayers = await Promise.all(config.slots.map(async (slot, index) => {
-    if (slot.quad) return makePerspectiveLayer({ ...slot, index }, sharp, metadata.width, metadata.height);
+    const resolvedSlot = { ...slot, strictGeometry: config.strictGeometry === true };
+    if (slot.quad) return makePerspectiveLayer({ ...resolvedSlot, index }, sharp, metadata.width, metadata.height);
     const rect = rectGeometry(slot);
     const sourceMetadata = await sharp(slot.source).metadata();
-    const policy = resolveFillPolicy(slot, sourceMetadata.width, sourceMetadata.height, rect.width, rect.height, index);
+    const policy = resolveFillPolicy(resolvedSlot, sourceMetadata.width, sourceMetadata.height, rect.width, rect.height, index);
     const resize = {
       fit: policy.fit,
       position: policy.position,

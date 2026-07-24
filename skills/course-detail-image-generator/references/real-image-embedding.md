@@ -1,8 +1,3 @@
----
-name: embed-real-images-no-ps
-description: Deterministically embed real screenshots or photos into rectangular or four-point perspective placeholder regions of a flattened visual design without Photoshop and without AI redrawing the source content. Use when Codex must place Word-extracted images, courseware screenshots, product images, document pages, or other text-sensitive raster assets into generated poster/detail-page cards, tilted phone screens, tablets, books, boards, or mockups while preserving readable source information, exact ordering, borders, bezels, number tabs, shadows, labels, and foreground occlusion.
----
-
 # Embed Real Images Without Photoshop
 
 Create the final raster by deterministic scaling, cropping, compositing, and alpha masks. Never send text-sensitive source images through an image-generation or image-editing model.
@@ -22,8 +17,11 @@ This model is mandatory for a flattened PNG because its visual elements cannot b
 ## Workflow
 
 1. Inspect the base and every source image at original resolution. Confirm dimensions and source order.
-2. Measure the complete visible inner opening, not a smaller centre safe area and not the outer shadow. Record rectangular geometry as `opening`. For repeated grids, verify every row independently; generated cards that look similar may have different dimensions. For a tilted surface, measure the four visible inner corners in top-left, top-right, bottom-right, bottom-left order.
-3. Fill every opening completely. Preserve the source aspect ratio and use centred `cover` whenever source and opening ratios differ: scale until both dimensions cover the opening, centre-align the source, and crop only the excess outside the opening. Never stretch. `contain` is allowed only when the ratios already match closely enough to leave no visible band.
+2. Measure the complete visible inner opening, not a smaller centre safe area, a source-ratio rectangle centred inside the card, or the outer shadow. Record rectangular geometry as `opening`. Measure all four inner boundaries directly from the base image. For repeated grids, verify every card independently; generated cards that look similar may have different dimensions. For a tilted surface, measure the four visible inner corners in top-left, top-right, bottom-right, bottom-left order.
+3. Classify each source before choosing fill behavior:
+   - For photos or decorative artwork where cropping is allowed, use centred `cover` so the source touches all four opening boundaries.
+   - For text-sensitive screenshots, slides, tables, and document pages where cropping is not allowed, require the opening ratio to match the source ratio within `3%`. If it does not, stop and correct the measured opening or regenerate the placeholder. Never hide the mismatch with `contain` bands and never crop factual content.
+   - Treat white margins that belong to the source page as source content. Do not confuse intrinsic page margins with an unfilled placeholder. Trim intrinsic margins only when the user explicitly authorizes content cropping.
 4. Define one slot per source in a JSON config. Use rectangular geometry for front-facing cards and `quad` geometry for perspective surfaces. Add `protect` shapes for any number tab, bezel, title label, icon, person, plant, scroll, or other foreground object overlapping a slot. Treat every title or category label attached to the top edge of a placeholder as foreground by default, even when it sits partly inside the measured image opening.
 5. Run `scripts/embed-real-images.cjs` with the base, config, and PNG output paths.
 6. Inspect the output with `view_image` at original detail. Do not deliver an unchecked first pass.
@@ -35,9 +33,12 @@ Create the task-specific config in the user's workspace, not inside this skill.
 
 ```json
 {
+  "strictGeometry": true,
   "slots": [
     {
       "source": "/absolute/path/source.png",
+      "textSensitive": true,
+      "cropAllowed": false,
       "opening": {
         "x": 62,
         "y": 605,
@@ -66,9 +67,11 @@ Supported protection shapes:
 
 Coordinates use the base image's pixel coordinate system. `opening` must cover the whole area inside the visible frame. Legacy top-level `x`, `y`, `width`, and `height` remain supported, but new configs should use `opening` so the measurement cannot be confused with a smaller content-safe area.
 
-Never change `opening` to the source aspect ratio merely to avoid `contain` bars. If the measured opening is larger than the inserted image even though source and configured ratios match, the opening was measured too small. Remeasure the base image.
+Set top-level `strictGeometry` to `true` for every new config. In strict mode, every rectangular slot must use an explicit `opening`, every slot must declare `cropAllowed`, and the command must include both `--mask-preview` and `--qa-dir`. Legacy geometry is accepted only for old configs outside strict mode.
 
-When ratios differ, the script overrides `contain`, `inside`, and non-centred positions with centred `cover`. Cropping must be symmetrical around the source centre. If centred cropping removes essential text or factual content, regenerate the placeholder at the source ratio; do not switch back to letterboxing and do not stretch the image.
+Never change `opening` to the source aspect ratio merely to avoid fill bands. If the source fills a centred rectangle but does not touch the frame on all four sides, the opening was measured too small. Remeasure the base image.
+
+When `cropAllowed` is `true`, ratio mismatch uses centred `cover`; cropping must be symmetrical around the source centre. When `cropAllowed` is `false`, a relative ratio mismatch greater than `3%` is a hard error. Correct the geometry or regenerate the placeholder at the source ratio; do not switch to letterboxing, stretch the image, or crop text.
 
 For a perspective phone, tablet, book page, board, or mockup, replace rectangular geometry with a four-point quad:
 
@@ -76,6 +79,7 @@ For a perspective phone, tablet, book page, board, or mockup, replace rectangula
 {
   "source": "/absolute/path/screenshot.png",
   "quad": [[245, 636], [506, 642], [509, 1229], [237, 1221]],
+  "cropAllowed": false,
   "fit": "cover",
   "position": "centre",
   "sourceRadius": 18,
@@ -105,6 +109,8 @@ node scripts/embed-real-images.cjs \
 
 Use `--mask-preview /absolute/path/mask.png` when diagnosing a wrong cutout or lost foreground object. Keep `--qa-dir` enabled for perspective jobs; it writes a nearest-neighbour 2x crop for each slot so inspection magnifies existing pixels without introducing another smoothing pass.
 
+For strict configs, both options are mandatory. Inspect the mask preview before accepting the result: each black hole must reach the complete visible inner edge of its frame. Reject any hole that appears as a smaller source-ratio rectangle floating inside a larger card.
+
 ## Acceptance Checks
 
 Verify all of the following:
@@ -113,6 +119,7 @@ Verify all of the following:
 - Sources follow the requested order.
 - Every source fills its complete intended inner frame without stretching.
 - No placeholder-colour band or unfilled margin remains between the embedded source and the measured inner frame.
+- In every QA crop, source pixels touch the top, right, bottom, and left inner boundaries; no source-ratio rectangle floats inside a larger opening.
 - Ratio mismatch is handled by centred edge cropping only; crop amounts are balanced on opposite sides.
 - The configured `opening` matches the complete visual opening rather than a source-sized rectangle centred inside it.
 - Outer borders, rounded corners, shadows, and number tabs remain visible.
@@ -135,6 +142,7 @@ For every perspective result, inspect both the whole image and every `--qa-dir` 
 - Do not stretch front-facing sources. Preserve aspect ratio and use centred `cover`; allow only the requested projective deformation for `quad` slots.
 - Do not make the placement rectangle smaller to protect titles, paper clips, plants, microscopes, labels, or other foreground objects. Measure the full opening, then restore those objects with `protect` shapes.
 - Do not use `contain` when ratios differ. The script automatically replaces it with centred `cover` so the opening is filled.
+- Do not use `contain` to conceal a geometry mismatch. For non-croppable text-sensitive material, stop and fix the opening or regenerate the placeholder.
 - Do not guess complex occlusion from a low-resolution preview. Inspect the full-resolution base.
 - Do not solve a covered title by shrinking or moving the source unless the source is genuinely misaligned. Preserve source geometry and restore the title with a tightly measured `protect` rectangle or polygon.
 - Treat a source as immutable. Only scale, crop, and resample it for placement.

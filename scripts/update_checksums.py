@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILLS_ROOT = ROOT / "plugins" / "course-detail-image-generator" / "skills"
+SKILLS_ROOT = ROOT / "skills"
 CHECKSUM_FILE = ROOT / "SKILL-CHECKSUMS.sha256"
 
 

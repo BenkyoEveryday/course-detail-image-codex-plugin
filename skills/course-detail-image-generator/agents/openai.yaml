@@ -1,0 +1,4 @@
+interface:
+  display_name: "课程详情图生成"
+  short_description: "解析需求、生成课程详情图，并无损嵌入真实课件或文档素材"
+  default_prompt: "使用 $course-detail-image-generator 根据我的 Word 需求文档或 Markdown 素材包生成课程详情图；先输出页面映射、风格方向和素材比例契约，等我确认后再生成。"
